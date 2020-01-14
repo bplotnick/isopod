@@ -21,10 +21,9 @@ import (
 
 	jsonpatch "github.com/evanphx/json-patch"
 	"go.starlark.net/starlark"
-	"k8s.io/helm/pkg/chartutil"
-	"k8s.io/helm/pkg/engine"
-	"k8s.io/helm/pkg/proto/hapi/chart"
-	"k8s.io/helm/pkg/timeconv"
+	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v3/pkg/chartutil"
+	"helm.sh/helm/v3/pkg/engine"
 	"sigs.k8s.io/yaml"
 
 	isopod "github.com/cruise-automation/isopod/pkg"
@@ -91,7 +90,7 @@ func (h *helmPackage) helmApplyFn(t *starlark.Thread, b *starlark.Builtin, args 
 }
 
 func (h *helmPackage) render(name, namespace, chartSource string, values *starlark.List) ([]starlark.Value, error) {
-	chrt, err := chartutil.Load(chartSource)
+	chrt, err := loader.Load(chartSource)
 	if err != nil {
 		return nil, err
 	}
@@ -100,21 +99,22 @@ func (h *helmPackage) render(name, namespace, chartSource string, values *starla
 	if err != nil {
 		return nil, err
 	}
-
-	config := &chart.Config{Raw: string(merged), Values: map[string]*chart.Value{}}
-
-	options := chartutil.ReleaseOptions{
-		Name:      name,
-		Time:      timeconv.Now(),
-		Namespace: namespace,
-	}
-
-	vals, err := chartutil.ToRenderValuesCaps(chrt, config, options, nil)
+	vals, err := chartutil.ReadValues(merged)
 	if err != nil {
 		return nil, err
 	}
 
-	files, err := engine.New().Render(chrt, vals)
+	options := chartutil.ReleaseOptions{
+		Name:      name,
+		Namespace: namespace,
+	}
+
+	vals, err = chartutil.ToRenderValues(chrt, vals.AsMap(), options, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	files, err := engine.Render(chrt, vals)
 	if err != nil {
 		return nil, err
 	}
